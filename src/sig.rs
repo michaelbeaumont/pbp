@@ -9,6 +9,8 @@ use typenum::U32;
 #[cfg(feature = "dalek")]
 use ed25519_dalek as dalek;
 #[cfg(feature = "dalek")]
+use ed25519_dalek::{Signer, Verifier};
+#[cfg(feature = "dalek")]
 use typenum::U64;
 
 use crate::ascii_armor::{ascii_armor, remove_ascii_armor};
@@ -74,9 +76,9 @@ impl PgpSig {
         subpackets: &[SubPacket],
         sign: F,
     ) -> PgpSig
-    where
-        Sha256: Digest<OutputSize = U32>,
-        F: Fn(&[u8]) -> Signature,
+        where
+            Sha256: Digest<OutputSize = U32> + Default,
+            F: Fn(&[u8]) -> Signature,
     {
         let data = prepare_packet(2, |packet| {
             packet.push(4); // version number
@@ -104,14 +106,14 @@ impl PgpSig {
             let hash = {
                 let mut hasher = Sha256::default();
 
-                hasher.process(data);
+                hasher.update(data);
 
-                hasher.process(&packet[3..]);
+                hasher.update(&packet[3..]);
 
-                hasher.process(&[0x04, 0xff]);
-                hasher.process(&bigendian_u32((packet.len() - 3) as u32));
+                hasher.update(&[0x04, 0xff]);
+                hasher.update(&bigendian_u32((packet.len() - 3) as u32));
 
-                hasher.fixed_result()
+                hasher.finalize()
             };
 
             write_subpackets(packet, |unhashed_subpackets| {
@@ -203,10 +205,10 @@ impl PgpSig {
     /// The data to be verified should be inputed by hashing it into the
     /// SHA-256 hasher using the input function.
     pub fn verify<Sha256, F1, F2>(&self, input: F1, verify: F2) -> bool
-    where
-        Sha256: Digest<OutputSize = U32>,
-        F1: FnOnce(&mut Sha256),
-        F2: FnOnce(&[u8], Signature) -> bool,
+        where
+            Sha256: Digest<OutputSize = U32> + Default,
+            F1: FnOnce(&mut Sha256),
+            F2: FnOnce(&[u8], Signature) -> bool,
     {
         let hash = {
             let mut hasher = Sha256::default();
@@ -214,12 +216,12 @@ impl PgpSig {
             input(&mut hasher);
 
             let hashed_section = self.hashed_section();
-            hasher.process(hashed_section);
+            hasher.update(hashed_section);
 
-            hasher.process(&[0x04, 0xff]);
-            hasher.process(&bigendian_u32(hashed_section.len() as u32));
+            hasher.update(&[0x04, 0xff]);
+            hasher.update(&bigendian_u32(hashed_section.len() as u32));
 
-            hasher.fixed_result()
+            hasher.finalize()
         };
 
         verify(&hash[..], self.signature())
@@ -235,11 +237,11 @@ impl PgpSig {
         timestamp: u32,
     ) -> PgpSig
     where
-        Sha256: Digest<OutputSize = U32>,
+        Sha256: Digest<OutputSize = U32> + Default,
         Sha512: Digest<OutputSize = U64>,
     {
         PgpSig::new::<Sha256, _>(data, fingerprint, sig_type, timestamp, &[], |data| {
-            keypair.sign::<Sha512>(data).to_bytes()
+            keypair.sign(data).into()
         })
     }
 
@@ -253,13 +255,13 @@ impl PgpSig {
     /// Verify this signature against an ed25519-dalek public key.
     pub fn verify_dalek<Sha256, Sha512, F>(&self, key: &dalek::PublicKey, input: F) -> bool
     where
-        Sha256: Digest<OutputSize = U32>,
+        Sha256: Digest<OutputSize = U32> + Default,
         Sha512: Digest<OutputSize = U64>,
         F: FnOnce(&mut Sha256),
     {
         self.verify::<Sha256, _, _>(input, |data, signature| {
             let sig = dalek::Signature::from_bytes(&signature).unwrap();
-            key.verify::<Sha512>(data, &sig).is_ok()
+            key.verify(data, &sig).is_ok()
         })
     }
 }

@@ -11,6 +11,8 @@ use typenum::U32;
 #[cfg(feature = "dalek")]
 use ed25519_dalek as dalek;
 #[cfg(feature = "dalek")]
+use ed25519_dalek::Signer;
+#[cfg(feature = "dalek")]
 use typenum::U64;
 
 use crate::ascii_armor::{ascii_armor, remove_ascii_armor};
@@ -66,7 +68,7 @@ impl PgpKey {
         sign: F,
     ) -> PgpKey
     where
-        Sha256: Digest<OutputSize = U32>,
+        Sha256: Digest<OutputSize = U32> + Default,
         F: Fn(&[u8]) -> Signature,
     {
         assert!(key.len() == 32);
@@ -177,7 +179,7 @@ impl PgpKey {
         user_id: &str,
     ) -> PgpKey
     where
-        Sha256: Digest<OutputSize = U32>,
+        Sha256: Digest<OutputSize = U32> + Default,
         Sha512: Digest<OutputSize = U64>,
     {
         PgpKey::new::<Sha256, _>(
@@ -185,7 +187,7 @@ impl PgpKey {
             flags,
             user_id,
             unix_time,
-            |data| keypair.sign::<Sha512>(data).to_bytes(),
+            |data| keypair.sign(data).into(),
         )
     }
 
