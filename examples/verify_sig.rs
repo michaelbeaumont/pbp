@@ -7,8 +7,8 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use sha2::{Sha256, Sha512};
 use pbp::{PgpKey, PgpSig};
+use sha2::{Sha256, Sha512};
 
 fn main() {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
